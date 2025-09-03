@@ -1,0 +1,8 @@
+aiogram
+notion-client
+python-dotenv
+aiohttp
+asyncio-mqtt
+python-dateutil
+emoji
+pytz

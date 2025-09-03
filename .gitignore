@@ -1,0 +1,11 @@
+# Ignore environment and secret files
+.env
+.env.*
+*.env
+*.env.*
+# Ignore Notion and other secret config files
+priavte files/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
