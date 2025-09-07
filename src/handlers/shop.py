@@ -18,50 +18,67 @@ SHOP_ITEMS = [
     {"name": "Energy Drink", "rarity": ItemRarity.RARE, "description": "Resets daily quest limit.", "type": "Consumable", "effect": "+1 Daily Quest"},
 ]
 
-async def show_shop(message: types.Message, notion_client: NotionClient, edit_message: bool = False):
-    shop_text = "🛒 **Welcome to the Item Shop!** 🛒\n\n"
-    shop_text += "Here are the items available for purchase:\n\n"
+async def show_shop(message: types.Message, user_id: int, notion_client: NotionClient, edit_message: bool = False):
+    """Display the shop with available items."""
+    try:
+        user = await notion_client.get_user(user_id)
+        if not user:
+            await message.answer("❌ Profile not found. Please use /start to register first.")
+            return
 
-    keyboard = []
-    for item_data in SHOP_ITEMS:
-        price = get_item_price(item_data["rarity"])
-        shop_text += f"🔹 **{item_data['name']}** - {price} 💎\n"
-        shop_text += f"   _{item_data['description']}_\n"
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"Buy {item_data['name']} ({price} 💎)",
-                callback_data=f"buy_{item_data['name']}"
-            )
-        ])
-    
-    keyboard.append([InlineKeyboardButton(text="🔙 Back to Dashboard", callback_data="dashboard")])
+        runes = user["properties"]["Runes"]["number"] or 0
+        shop_text = f"🛒 **Welcome to the Item Shop!** 🛒\n\n"
+        shop_text += f"💎 Your Runes: **{runes}**\n\n"
+        shop_text += "Here are the items available for purchase:\n\n"
 
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        keyboard = []
+        for item_data in SHOP_ITEMS:
+            price = get_item_price(item_data["rarity"])
+            shop_text += f"🔹 **{item_data['name']}** - {price} 💎\n"
+            shop_text += f"   _{item_data['description']}_\n"
+            keyboard.append([
+                InlineKeyboardButton(
+                    text=f"Buy {item_data['name']} ({price} 💎)",
+                    callback_data=f"buy_{item_data['name']}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton(text="🔙 Back to Dashboard", callback_data="dashboard")])
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-    if edit_message:
-        await message.edit_text(shop_text, reply_markup=reply_markup, parse_mode="Markdown")
-    else:
-        await message.answer(shop_text, reply_markup=reply_markup, parse_mode="Markdown")
+        if edit_message:
+            try:
+                await message.edit_text(shop_text, reply_markup=reply_markup, parse_mode="Markdown")
+            except Exception:
+                await message.answer(shop_text, reply_markup=reply_markup, parse_mode="Markdown")
+        else:
+            await message.answer(shop_text, reply_markup=reply_markup, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Error in show_shop: {e}")
+        await message.answer("❌ Error loading shop. Please try again later.")
 
 def register_shop_handlers(dp: Dispatcher):
-    """Register shop command handlers"""
+    """Register shop command handlers."""
 
     @dp.message(Command("shop"))
     async def cmd_shop_message(message: types.Message, state: FSMContext):
+        """Handle /shop command."""
         await state.clear()
         notion_client: NotionClient = dp.get('notion_client')
-        await show_shop(message, notion_client)
+        await show_shop(message, message.from_user.id, notion_client)
 
     @dp.callback_query(F.data == "shop")
     async def cmd_shop_callback(callback_query: types.CallbackQuery, state: FSMContext):
+        """Handle shop callback."""
         await state.clear()
         notion_client: NotionClient = dp.get('notion_client')
-        await show_shop(callback_query.message, notion_client, edit_message=True)
+        await show_shop(callback_query.message, callback_query.from_user.id, notion_client, edit_message=True)
         await callback_query.answer()
 
     @dp.callback_query(F.data.startswith('buy_'))
     async def cmd_buy_item(callback_query: types.CallbackQuery):
-        """Handle item purchase"""
+        """Handle item purchase."""
         item_name = callback_query.data.replace('buy_', '')
         user_id = callback_query.from_user.id
         
@@ -90,8 +107,7 @@ def register_shop_handlers(dp: Dispatcher):
             await notion_client.add_item_to_inventory(user_id, {**item_data, "price": price})
 
             await callback_query.answer(f"✅ Purchased {item_name} for {price} 💎!", show_alert=True)
-            
-            await show_shop(callback_query.message, notion_client, edit_message=True)
+            await show_shop(callback_query.message, user_id, notion_client, edit_message=True)
 
         except Exception as e:
             logger.error(f"Error buying item: {e}")
